@@ -1,52 +1,48 @@
+from telethon import TelegramClient, events
 import asyncio
-import json
 import os
-from telethon import TelegramClient
-from telethon.tl.functions.messages import ImportChatInviteRequest
 
-api_id = int(os.getenv("API_ID"))
-api_hash = os.getenv("API_HASH")
-SESSION = "user"
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+SESSION = os.getenv("SESSION")
 
-client = TelegramClient(SESSION, api_id, api_hash)
+client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
-async def resolve_group(group):
-    try:
-        if group.startswith("https://t.me/+"):
-            hash_part = group.split("+", 1)[1]
-            return await client(ImportChatInviteRequest(hash_part))
-        elif group.startswith("https://t.me/"):
-            return await client.get_entity(group)
-        elif group.isdigit() or group.startswith("-100"):
-            return int(group)
-        return group
-    except Exception as e:
-        print(f"Failed to resolve group {group}: {e}")
-        return None
+message_loops = {}
+DELAY = 10
 
-async def main():
-    await client.start()
-    print("Userbot started...")
+@client.on(events.NewMessage(from_users=int(os.getenv("BOT_UID"))))
+async def handler(event):
+    global DELAY
+    if event.message.message.startswith("/schedule "):
+        parts = event.message.message.split(" ", 2)
+        if len(parts) < 3:
+            return await event.reply("Usage: /schedule <group> <delay> <message>")
+        target, delay, msg = parts[1], int(parts[2].split(" ")[0]), " ".join(parts[2].split(" ")[1:])
+        async def send_loop():
+            while True:
+                try:
+                    await client.send_message(target, msg)
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    break
+        if target in message_loops:
+            message_loops[target].cancel()
+        task = asyncio.create_task(send_loop())
+        message_loops[target] = task
+        await event.reply(f"Scheduled message every {delay}s to {target}")
 
-    while True:
-        try:
-            with open("commands.json", "r") as f:
-                commands = json.load(f)
-        except:
-            commands = {}
+    elif event.message.message.startswith("/stop "):
+        target = event.message.message.split(" ", 1)[1]
+        if target in message_loops:
+            message_loops[target].cancel()
+            del message_loops[target]
+            await event.reply(f"Stopped sending messages to {target}")
 
-        for group, config in commands.items():
-            entity = await resolve_group(group)
-            if not entity:
-                continue
-
-            if config["type"] == "text":
-                await client.send_message(entity, config["message"])
-            elif config["type"] == "media":
-                await client.send_file(entity, config["file_id"], caption=config["caption"])
-            await asyncio.sleep(config["delay"])
-
-        await asyncio.sleep(5)
+    elif event.message.message.startswith("/delay "):
+        DELAY = int(event.message.message.split(" ")[1])
+        await event.reply(f"Global delay set to {DELAY}s")
 
 with client:
-    client.loop.run_until_complete(main())
+    print("Userbot is running...")
+    client.run_until_disconnected()
