@@ -1,1 +1,1 @@
-python3 userbot.py & python3 bot.py
+worker: bash entrypoint.sh
