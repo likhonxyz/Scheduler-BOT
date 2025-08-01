@@ -1,3 +1,2 @@
-python-telegram-bot[webhooks]
-telethon
-python-dotenv
+python-telegram-bot==20.8
+telethon==1.33.1
