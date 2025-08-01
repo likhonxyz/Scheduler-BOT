@@ -1,46 +1,59 @@
-import asyncio, os, json
-from telethon import TelegramClient
+import asyncio
+import os
+from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 
-api_id = int(os.environ['API_ID'])
-api_hash = os.environ['API_HASH']
-session_string = os.environ['SESSION_STRING']
-client = TelegramClient(StringSession(session_string), api_id, api_hash)
+api_id = int(os.getenv("API_ID"))
+api_hash = os.getenv("API_HASH")
+session_str = os.getenv("SESSION_STRING")
+client = TelegramClient(StringSession(session_str), api_id, api_hash)
 
-COMMAND_FILE = 'commands.json'
-DELAY_FILE = 'delay.txt'
+scheduled = False
+delay = 10
 
-def get_delay():
-    try:
-        with open(DELAY_FILE, 'r') as f:
-            return int(f.read())
-    except:
-        return 10
-
-async def main_loop():
-    await client.start()
-    print("✅ Userbot running...")
-    while True:
+@client.on(events.NewMessage(pattern=r'^/schedule (.+?) (.+)', incoming=True))
+async def schedule_handler(event):
+    global scheduled
+    target, msg = event.pattern_match.group(1), event.pattern_match.group(2)
+    await event.reply(f"✅ Scheduled message to {target}")
+    scheduled = True
+    while scheduled:
         try:
-            if not os.path.exists(COMMAND_FILE):
-                await asyncio.sleep(5)
-                continue
-            with open(COMMAND_FILE, 'r') as f:
-                cmd = json.load(f)
-            if cmd.get("type") == "stop":
-                await asyncio.sleep(5)
-                continue
-            elif cmd.get("type") == "text":
-                target = cmd['target']
-                while True:
-                    await client.send_message(target, cmd['text'])
-                    await asyncio.sleep(get_delay())
-            elif cmd.get("type") == "media":
-                while True:
-                    await client.send_file(cmd['target'], cmd['file'], caption=cmd.get('caption'))
-                    await asyncio.sleep(get_delay())
+            await client.send_message(target, msg)
+            await asyncio.sleep(delay)
         except Exception as e:
-            print("Loop error:", e)
-            await asyncio.sleep(5)
+            await event.reply(str(e))
+            break
 
-with client:
-    client.loop.run_until_complete(main_loop())
+@client.on(events.NewMessage(pattern=r'^/schedulemedia (.+)', incoming=True))
+async def schedule_media_handler(event):
+    global scheduled
+    if event.media:
+        target = event.pattern_match.group(1)
+        await event.reply(f"✅ Scheduled media to {target}")
+        scheduled = True
+        while scheduled:
+            try:
+                await client.send_file(target, event.media, caption=event.text)
+                await asyncio.sleep(delay)
+            except Exception as e:
+                await event.reply(str(e))
+                break
+    else:
+        await event.reply("❌ মিডিয়া attach করো।")
+
+@client.on(events.NewMessage(pattern=r'^/stop', incoming=True))
+async def stop_handler(event):
+    global scheduled
+    scheduled = False
+    await event.reply("🛑 বন্ধ করা হয়েছে।")
+
+@client.on(events.NewMessage(pattern=r'^/delay (\d+)', incoming=True))
+async def delay_handler(event):
+    global delay
+    delay = int(event.pattern_match.group(1))
+    await event.reply(f"⏱️ Delay set to {delay} seconds.")
+
+client.start()
+print("Userbot is running...")
+client.run_until_disconnected()
