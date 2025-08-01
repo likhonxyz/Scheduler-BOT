@@ -1,30 +1,42 @@
-import os
 import asyncio
+import json
+import os
+import time
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-api_id = int(os.environ.get("API_ID"))
-api_hash = os.environ.get("API_HASH")
-session_string = os.environ.get("SESSION_STRING")
+api_id = int(os.getenv("API_ID"))
+api_hash = os.getenv("API_HASH")
+session = os.getenv("SESSION")
 
-client = TelegramClient(StringSession(session_string), api_id, api_hash)
+client = TelegramClient(StringSession(session), api_id, api_hash)
 
-async def main():
+if not os.path.exists("commands.json"):
+    with open("commands.json", "w") as f:
+        json.dump([], f)
+if not os.path.exists("delay.txt"):
+    with open("delay.txt", "w") as f:
+        f.write("10")
+
+async def main_loop():
     await client.start()
-    print("✅ Userbot running...")
-
+    print("Userbot started...")
     while True:
-        if os.path.exists("commands.txt"):
-            with open("commands.txt", "r") as f:
-                lines = f.readlines()
-            open("commands.txt", "w").close()  # clear after reading
-            for line in lines:
+        try:
+            with open("commands.json", "r") as f:
+                data = json.load(f)
+            with open("delay.txt", "r") as f:
+                delay = int(f.read().strip())
+            for item in data:
                 try:
-                    target, msg = line.strip().split("|", 1)
-                    await client.send_message(target, msg)
+                    await client.send_message(item["group"], item["msg"])
+                    print(f"Sent to {item['group']}: {item['msg']}")
                 except Exception as e:
-                    print("❌ Error sending message:", e)
-        await asyncio.sleep(3)
+                    print(f"Error sending to {item['group']}: {e}")
+                time.sleep(delay)
+        except Exception as e:
+            print("Loop error:", e)
+        await asyncio.sleep(5)
 
 with client:
-    client.loop.run_until_complete(main())
+    client.loop.run_until_complete(main_loop())
