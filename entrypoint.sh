@@ -1,4 +1,4 @@
 #!/bin/bash
-echo "Starting bot and userbot..."
+source .venv/bin/activate
 python3 bot.py &
 python3 userbot.py
